@@ -3,11 +3,12 @@ package tech.thatgravyboat.commonats;
 import com.google.gson.JsonObject;
 import net.fabricmc.mappingio.format.ProGuardReader;
 import net.fabricmc.mappingio.format.Tiny2Reader;
-import net.fabricmc.mappingio.format.TsrgReader;
 import net.fabricmc.mappingio.tree.MappingTree;
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.StringReader;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.util.HashMap;
@@ -43,8 +44,7 @@ public final class MappingDownloader {
                 .get("url")
                 .getAsString());
         InputStream intermediary = Utils.getInputStream("https://maven.fabricmc.net/net/fabricmc/intermediary/" + version + "/intermediary-" + version + "-v2.jar");
-        InputStream srg = Utils.getInputStream("https://maven.minecraftforge.net/de/oceanlabs/mcp/mcp_config/" + version + "/mcp_config-" + version + ".zip");
-        return new Data(serverMappings, clientMappings, intermediary, srg);
+        return new Data(serverMappings, clientMappings, intermediary);
     }
 
     private static Output getFromData(Data data) throws Exception {
@@ -52,13 +52,11 @@ public final class MappingDownloader {
         try (
                 StringReader serverMappings = new StringReader(data.serverMappings());
                 StringReader clientMappings = new StringReader(data.clientMappings());
-                ZipInputStream intermediary = new ZipInputStream(data.intermediary());
-                ZipInputStream srg = new ZipInputStream(data.srg)
+                ZipInputStream intermediary = new ZipInputStream(data.intermediary())
         ) {
             ProGuardReader.read(serverMappings, "mojang", "obf", tree);
             ProGuardReader.read(clientMappings, "mojang", "obf", tree);
             Tiny2Reader.read(readTinyMapping(intermediary), tree);
-            TsrgReader.read(Utils.readFileInZip(srg, "config/joined.tsrg"), tree);
 
             final Map<String, String> classMapBuilder = new HashMap<>();
             final Map<String, String> methodMapBuilder = new HashMap<>();
@@ -71,14 +69,14 @@ public final class MappingDownloader {
                 }
                 for (final MappingTree.MethodMapping method : clazz.getMethods()) {
                     final String imName = method.getName("intermediary");
-                    final String mName = method.getName("srg");
+                    final String mName = method.getName("mojang");
                     if (imName != null && mName != null) {
                         methodMapBuilder.put(imName, mName.intern());
                     }
                 }
                 for (final MappingTree.FieldMapping field : clazz.getFields()) {
                     final String ifName = field.getName("intermediary");
-                    final String fName = field.getName("srg");
+                    final String fName = field.getName("mojang");
                     if (ifName != null && fName != null) {
                         fieldMapBuilder.put(ifName, fName.intern());
                     }
@@ -103,7 +101,7 @@ public final class MappingDownloader {
         return getFromData(getMappings(version));
     }
 
-    private record Data(String serverMappings, String clientMappings, InputStream intermediary, InputStream srg) {
+    private record Data(String serverMappings, String clientMappings, InputStream intermediary) {
     }
 
     public record Output(Map<String, String> classes, Map<String, String> methods, Map<String, String> fields) {
